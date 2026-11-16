@@ -1,3 +1,8 @@
+FROM rust:1.88-alpine AS startup
+WORKDIR /build
+COPY start.rs /build/start.rs
+RUN rustc --edition=2024 -O -C target-feature=+crt-static start.rs -o /cbgpu-gpu-start
+
 FROM tensorflow/tensorflow:latest-gpu-jupyter
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server \
@@ -11,7 +16,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
        'HostKey /etc/ssh/hostkeys/ssh_host_ed25519_key' 'HostKeyAlgorithms ssh-ed25519' \
        > /etc/ssh/sshd_config.d/cbgpu.conf
 
-COPY start.sh /usr/local/bin/cbgpu-gpu-start
+COPY --from=startup /cbgpu-gpu-start /usr/local/bin/cbgpu-gpu-start
 RUN chmod 755 /usr/local/bin/cbgpu-gpu-start
 EXPOSE 22 8888
-CMD ["/usr/local/bin/cbgpu-gpu-start"]
+CMD ["/usr/local/bin/cbgpu-gpu-start", "--run"]

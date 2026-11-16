@@ -11,9 +11,9 @@ system, use [CBGPU-platform](https://github.com/CBGPU-Engineering/CBGPU-platform
    platform (or backend, for LaTeX) through a separate reviewed PR.
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m unittest discover -s tests
+cargo fmt --check
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
 ```
 
 Write project documentation and PR summaries in English. Existing Korean product

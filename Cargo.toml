@@ -6,6 +6,7 @@ license = "Apache-2.0"
 rust-version = "1.88"
 [dependencies]
 fs2 = "0.4"
+libc = "0.2"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -48,3 +49,7 @@ path = "tests/native/cpu_docker.rs"
 [[test]]
 name = "process"
 path = "tests/native/process.rs"
+
+[[test]]
+name = "installer"
+path = "tests/native/installer.rs"

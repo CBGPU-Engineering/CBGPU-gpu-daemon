@@ -1,8 +1,11 @@
-supabase_url: "https://fclbzjlcepoaifvcoxdw.supabase.co/"
-supabase_anon_key: "sb_publishable_fgrXxcwq2FC-G4YWzB7Y2A_M93BlQ4X"
+supabase_url: "http://127.0.0.1:54321"
+supabase_anon_key: "YOUR_PUBLIC_CLIENT_KEY"
 
 # Supabase 폴링 주기 (초)
 poll_interval_seconds: 30
+
+# Preserve existing notebooks during the first native controller observation.
+initialize_idle_containers: false
 
 # Docker 설정 (컨테이너 리셋 시 사용)
 docker:

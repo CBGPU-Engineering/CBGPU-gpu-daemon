@@ -1,0 +1,29 @@
+# Example only. Reuse the existing SSH gateway host key during the reviewed handover.
+[Unit]
+Description=CBGPU native school LAN reservation-scoped SSH forwarding gateway
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/cbgpu/native-controller-approved
+
+[Service]
+Type=simple
+DynamicUser=true
+LoadCredential=service-role-key:/etc/cbgpu/service-role-key
+LoadCredential=ssh-host-key:/etc/cbgpu/ssh-gateway-key
+Environment=CBGPU_SERVICE_ROLE_KEY_FILE=%d/service-role-key
+Environment=CBGPU_GATEWAY_HOST_KEY=%d/ssh-host-key
+Environment=CBGPU_SUPABASE_URL=http://127.0.0.1:54321
+Environment=CBGPU_GATEWAY_LISTEN_ADDRESS=10.138.23.12:22220
+ExecStart=/opt/cbgpu-native/0.1.0/bin/cbgpu-ssh-gateway
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

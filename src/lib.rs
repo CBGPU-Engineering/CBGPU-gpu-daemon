@@ -4,3 +4,4 @@ pub mod docker;
 pub mod gateway;
 
 pub mod cpu;
+pub mod installer;

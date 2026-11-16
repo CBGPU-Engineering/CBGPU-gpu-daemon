@@ -12,8 +12,8 @@ gateway for CBGPU. This is a privileged infrastructure component, not the web UI
 The native implementation provides three independent binaries: the GPU booking
 controller, an SSH forwarding gateway, and the non-Compose CPU deployment worker.
 CPU builds run separately so installation cannot postpone a known GPU expiry.
-Existing Python/Go services remain available during the reviewed handover; building
-or testing this candidate does not restart them.
+A separate installed legacy service remains available during the reviewed handover;
+building or testing this repository does not restart it. Maintained host logic is Rust.
 
 ```bash
 cargo test --locked
@@ -68,17 +68,17 @@ recreated by this migration.
 
 [Example systemd units](deploy/systemd/) invoke the native binaries from a
 versioned `/opt/cbgpu-native/0.1.0/bin` installation, not a mutable Git checkout.
-They are examples only: this repository does not install or enable them. The
-root-owned `/etc/cbgpu/native-controller-approved` marker is deliberately absent
-until an operator completes the handover. Keep the service key private, preserve
+They remain examples until the native installer explicitly stages them. Staging
+uses immutable version/digest directories and a release-specific private approval
+receipt; it does not enable, stop, start or restart services. Keep the service key private, preserve
 the existing gateway host key, and configure `docker.ssh_host_keys_dir` under
 `/var/lib/cbgpu-gpu-controller/host-keys` when using these examples.
 
 The current host still runs the independent legacy installation at
 `/home/cbgpu/CBGPU/Daemon/daemon.py`; publishing Rust source does not change that
-process. The legacy `setup.sh`, Python implementation/tests and Go gateway remain
-until the native installer, service handover and runtime checks are complete.
-Do not use the legacy setup script to install the native services.
+process. Legacy setup/Python/Go sources have been retired from this repository. The
+independent installed tree is preserved until the operator completes a safe
+handover. No source publication changes running services.
 
 Fixed-port application redeployments stop the old container during the storage
 copy/port handoff; rollback is provided, but this is not a zero-downtime swap.
@@ -94,16 +94,28 @@ worker checks fresh resource permission before launch.
 ```bash
 git clone https://github.com/CBGPU-Engineering/CBGPU-gpu-daemon.git
 cd CBGPU-gpu-daemon
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m unittest discover -s tests
-cd gpu_ssh/gateway && go test ./...
+cargo fmt --check
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+rustc --edition=2024 --test gpu_ssh/start.rs -o /tmp/cbgpu-entrypoint-test
+/tmp/cbgpu-entrypoint-test
 ```
 
-Go 1.26 is required by the SSH gateway module. Python tests use mocks and temporary
-keys. They do not start, reset or remove production GPU containers.
+Installer fixtures fake systemctl, Docker observations and local units; they never
+stop or restart a service. The optional real CPU deployment fixture uses only its
+own disposable containers. Container startup is native Rust; the vendor Jupyter
+and TensorFlow image and its environment initialization remain third-party code.
 
 ## Installation
+
+`cbgpu-native-install stage` defaults to a side-effect-free plan. Explicit root
+`stage --apply` backs up private units/environment files, preserves credentials
+and existing notebook IDs, and installs unapproved service definitions only. A
+separate `approve --apply --cpu-jobs-drained` requires inactive/disabled legacy
+controllers and SSH gateways, fresh backend checks and unchanged reviewed files.
+It writes a private receipt; service activation remains a separate operator action.
+No package installation, Docker/driver reconfiguration or OS tuning is performed.
+
 
 Use [CBGPU-platform](https://github.com/CBGPU-Engineering/CBGPU-platform) for the existing `Daemon/` integration
 path. Review [installation details](docs/INSTALLATION.md) and configure your own

@@ -9,6 +9,8 @@ gateway for CBGPU. This is a privileged infrastructure component, not the web UI
 
 ## Native Rust candidate
 
+The host binaries require Rust 1.89 or newer.
+
 The native implementation provides three independent binaries: the GPU booking
 controller, an SSH forwarding gateway, and the non-Compose CPU deployment worker.
 CPU builds run separately so installation cannot postpone a known GPU expiry.

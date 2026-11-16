@@ -2,7 +2,7 @@ use crate::authorization::{Authorizer, Failure, Result, validate_public_key};
 use chrono::{DateTime, Utc};
 use russh::{
     Channel, ChannelOpenFailure,
-    keys::{Algorithm, PublicKey},
+    keys::Algorithm,
     server::{self, Auth, ChannelOpenHandle, Msg, Session},
 };
 use std::{
@@ -62,10 +62,13 @@ impl server::Handler for Connection {
     async fn auth_publickey_offered(
         &mut self,
         user: &str,
-        key: &PublicKey,
+        key: server::PublicKeyOffer<'_>,
     ) -> std::result::Result<Auth, Self::Error> {
         Ok(
-            if user == "gateway" && key.algorithm() == Algorithm::Ed25519 {
+            if user == "gateway"
+                && *key.algorithm == Algorithm::Ed25519
+                && key.public_key.algorithm() == Algorithm::Ed25519
+            {
                 Auth::Accept
             } else {
                 Auth::reject()
@@ -75,12 +78,16 @@ impl server::Handler for Connection {
     async fn auth_publickey(
         &mut self,
         user: &str,
-        key: &PublicKey,
+        key: server::VerifiedPublicKey<'_>,
     ) -> std::result::Result<Auth, Self::Error> {
-        if user != "gateway" || key.algorithm() != Algorithm::Ed25519 {
+        if user != "gateway"
+            || *key.algorithm != Algorithm::Ed25519
+            || key.public_key.algorithm() != Algorithm::Ed25519
+        {
             return Ok(Auth::reject());
         }
         let key = match key
+            .public_key
             .to_openssh()
             .ok()
             .and_then(|value| validate_public_key(&value).ok())

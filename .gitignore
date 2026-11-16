@@ -12,3 +12,6 @@ __pycache__/
 /release-artifacts/
 
 node_modules/
+
+# Native Rust build output (runtime state stays outside Git).
+/target/

@@ -1,0 +1,31 @@
+# Example only. Drain legacy CPU jobs and transfer exclusive ownership before enabling.
+[Unit]
+Description=CBGPU native non-Compose CPU deployment controller
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/cbgpu/native-controller-approved
+
+[Service]
+Type=simple
+User=root
+StateDirectory=cbgpu-cpu-controller
+StateDirectoryMode=0700
+Environment=CBGPU_SUPABASE_SERVICE_ROLE_KEY_FILE=/etc/cbgpu/service-role-key
+# Enable CBGPU_CPU_DIAGNOSTICS_DB only after the backend migration is approved/applied.
+ExecStart=/opt/cbgpu-native/0.1.0/bin/cbgpu-cpu-controller --run --apply /etc/cbgpu/controller.yaml /var/lib/cbgpu-cpu-controller
+Restart=on-failure
+RestartSec=5
+# Allow an in-flight staged swap to complete/roll back during graceful shutdown.
+TimeoutStopSec=1200
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=full
+# UFW persists the explicit school-subnet rule here.
+ReadWritePaths=-/etc/ufw
+ProtectHome=read-only
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

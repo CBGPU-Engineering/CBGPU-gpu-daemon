@@ -38,3 +38,14 @@ jobs:
           cache-dependency-path: gpu_ssh/gateway/go.sum
       - run: go test ./...
         working-directory: gpu_ssh/gateway
+
+  native-rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - run: cargo +stable fmt -- --check
+      - run: cargo +stable test --locked
+      - run: cargo +stable clippy --all-targets --locked -- -D warnings
+      - run: cargo +stable test --locked --test cpu_docker -- --ignored

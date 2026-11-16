@@ -1,0 +1,26 @@
+# Example only. Do not enable while the legacy controller owns GPU duties.
+[Unit]
+Description=CBGPU native GPU reservation controller
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/cbgpu/native-controller-approved
+
+[Service]
+Type=simple
+User=root
+StateDirectory=cbgpu-gpu-controller
+StateDirectoryMode=0700
+Environment=CBGPU_SUPABASE_SERVICE_ROLE_KEY_FILE=/etc/cbgpu/service-role-key
+ExecStart=/opt/cbgpu-native/0.1.0/bin/cbgpu-gpu-controller --run --apply /etc/cbgpu/controller.yaml /var/lib/cbgpu-gpu-controller/state.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

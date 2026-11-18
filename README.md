@@ -20,8 +20,10 @@ The host binaries require Rust 1.89 or newer.
 The native implementation provides three independent binaries: the GPU booking
 controller, an SSH forwarding gateway, and the non-Compose CPU deployment worker.
 CPU builds run separately so installation cannot postpone a known GPU expiry.
-A separate installed legacy service remains available during the reviewed handover;
-building or testing this repository does not restart it. Maintained host logic is Rust.
+The GPU booking controller has completed its reviewed Rust handover. The SSH
+gateways and CPU deployment workers remain separate compatibility services; their
+native implementations below are not yet activated. Building or testing this
+repository does not change running services.
 
 ```bash
 cargo test --locked
@@ -82,11 +84,12 @@ receipt; it does not enable, stop, start or restart services. Keep the service k
 the existing gateway host key, and configure `docker.ssh_host_keys_dir` under
 `/var/lib/cbgpu-gpu-controller/host-keys` when using these examples.
 
-The current host still runs the independent legacy installation at
-`/home/cbgpu/CBGPU/Daemon/daemon.py`; publishing Rust source does not change that
-process. Legacy setup/Python/Go sources have been retired from this repository. The
-independent installed tree is preserved until the operator completes a safe
-handover. No source publication changes running services.
+The current GPU booking controller runs the reviewed Rust source at
+[`a0ba1d5`](https://github.com/CBGPU-Engineering/CBGPU-gpu-daemon/commit/a0ba1d5).
+The former Python GPU controller service is stopped and disabled; its installed
+tree is preserved for recovery. Existing SSH gateways and CPU deployment workers
+remain independent compatibility services and have not completed that handover.
+Publishing source or downloading a release does not change running services.
 
 Fixed-port application redeployments stop the old container during the storage
 copy/port handoff; rollback is provided, but this is not a zero-downtime swap.

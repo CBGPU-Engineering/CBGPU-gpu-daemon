@@ -471,3 +471,201 @@ async fn failed_initial_inspection_preserves_notebook_and_remembers_expiry() {
         .await;
     assert!(report.actions.iter().any(|action| action == "gpu1:reset"));
 }
+
+#[tokio::test]
+async fn ssh_key_copy_repairs_root_ownership_after_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let runner = Arc::new(MockRunner {
+        calls: Mutex::new(vec![]),
+        fail_create: false,
+        fail_start_once: Mutex::new(false),
+    });
+    let docker = docker(dir.path(), runner.clone());
+    docker
+        .write_keys(&docker.config.gpus[&1], &[])
+        .await
+        .unwrap();
+    let calls = runner.calls.lock().unwrap();
+    let copy = calls
+        .iter()
+        .position(|c| c.get(1).is_some_and(|v| v == "cp"))
+        .unwrap();
+    let repair = calls
+        .iter()
+        .position(|c| c.iter().any(|v| v == "chown"))
+        .unwrap();
+    assert!(repair > copy);
+    assert_eq!(
+        calls[repair],
+        [
+            "docker",
+            "exec",
+            "--user",
+            "0:0",
+            "jupiterhub_gpu1",
+            "chown",
+            "0:0",
+            "/root/.ssh",
+            "/root/.ssh/authorized_keys"
+        ]
+    );
+    assert!(!calls.iter().any(|c| {
+        c.iter()
+            .any(|v| ["restart", "stop", "start"].contains(&v.as_str()))
+    }));
+}
+
+/// Opt-in CPU-only Docker fixture. Never targets a configured GPU container.
+#[tokio::test]
+async fn native_key_sync_root_strictmodes_fixture() {
+    if std::env::var("CBGPU_TEST_SSH_OWNERSHIP_DOCKER").as_deref() != Ok("1") {
+        return;
+    }
+    use cbgpu_gpu_daemon::docker::NativeRunner;
+    use std::process::Command;
+    let name = format!("cbgpu-ssh-ownership-test-{}", std::process::id());
+    struct Cleanup(String);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = Command::new("docker").args(["rm", "-f", &self.0]).output();
+        }
+    }
+    let started = Command::new("docker")
+        .args([
+            "run",
+            "-d",
+            "--name",
+            &name,
+            "--network",
+            "none",
+            "--memory",
+            "256m",
+            "--cpus",
+            "1",
+            "--entrypoint",
+            "/bin/sh",
+            "cbgpu/gpu-ssh:latest",
+            "-c",
+            "sleep 120",
+        ])
+        .output()
+        .unwrap();
+    assert!(started.status.success(), "CPU-only fixture failed to start");
+    let _cleanup = Cleanup(name.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("fixture_ed25519");
+    assert!(
+        Command::new("ssh-keygen")
+            .args(["-q", "-t", "ed25519", "-N", "", "-f"])
+            .arg(&key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let public = std::fs::read_to_string(key_path.with_extension("pub")).unwrap();
+    let mut cfg = config(dir.path());
+    cfg.gpus.get_mut(&1).unwrap().container = name.clone();
+    let docker = Docker::new(cfg, "127.0.0.1".parse().unwrap(), Arc::new(NativeRunner)).unwrap();
+    // Reproduce docker-cp's previous unprivileged owner, then repair via real adapter.
+    assert!(Command::new("docker").args(["exec", "--user", "0:0", &name, "sh", "-c", "mkdir -p /root/.ssh; touch /root/.ssh/authorized_keys; chown 1000:1000 /root/.ssh/authorized_keys"]).status().unwrap().success());
+    docker
+        .write_keys(&docker.config.gpus[&1], std::slice::from_ref(&public))
+        .await
+        .unwrap();
+    let result = Command::new("docker")
+        .args([
+            "exec",
+            "--user",
+            "0:0",
+            &name,
+            "stat",
+            "-c",
+            "%u:%g:%a",
+            "/root/.ssh",
+            "/root/.ssh/authorized_keys",
+        ])
+        .output()
+        .unwrap();
+    assert!(result.status.success());
+    assert_eq!(
+        String::from_utf8(result.stdout).unwrap(),
+        "0:0:700\n0:0:600\n"
+    );
+    let strict = Command::new("docker").args(["exec", "--user", "0:0", &name, "sh", "-c", "mkdir -p /run/sshd; ssh-keygen -A >/dev/null 2>&1; /usr/sbin/sshd -T -h /etc/ssh/ssh_host_ed25519_key"]).output().unwrap();
+    assert!(
+        strict.status.success(),
+        "{}",
+        String::from_utf8_lossy(&strict.stderr)
+    );
+    assert!(
+        String::from_utf8(strict.stdout)
+            .unwrap()
+            .lines()
+            .any(|l| l == "strictmodes yes")
+    );
+    assert!(
+        Command::new("docker")
+            .arg("cp")
+            .arg(&key_path)
+            .arg(format!("{name}:/tmp/fixture_ed25519"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(Command::new("docker").args(["exec", "--user", "0:0", &name, "sh", "-c", "chown 0:0 /tmp/fixture_ed25519; chmod 600 /tmp/fixture_ed25519; passwd -d root >/dev/null; /usr/sbin/sshd -f /dev/null -h /etc/ssh/ssh_host_ed25519_key -o StrictModes=yes -o PermitRootLogin=prohibit-password -o AuthorizedKeysFile=/root/.ssh/authorized_keys -o PidFile=/tmp/fixture_sshd.pid -p 2222"]).status().unwrap().success());
+    let login = || {
+        Command::new("docker")
+            .args([
+                "exec",
+                "--user",
+                "0:0",
+                &name,
+                "ssh",
+                "-i",
+                "/tmp/fixture_ed25519",
+                "-p",
+                "2222",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=/dev/null",
+                "-o",
+                "ConnectTimeout=3",
+                "root@127.0.0.1",
+                "true",
+            ])
+            .output()
+            .unwrap()
+    };
+    assert!(
+        Command::new("docker")
+            .args([
+                "exec",
+                "--user",
+                "0:0",
+                &name,
+                "chown",
+                "1000:1000",
+                "/root/.ssh/authorized_keys"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        !login().status.success(),
+        "StrictModes must reject the old unprivileged owner"
+    );
+    docker
+        .write_keys(&docker.config.gpus[&1], &[public])
+        .await
+        .unwrap();
+    let accepted = login();
+    assert!(
+        accepted.status.success(),
+        "StrictModes login after repair: {}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+}

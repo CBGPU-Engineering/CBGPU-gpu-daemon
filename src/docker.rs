@@ -323,6 +323,8 @@ impl Driver for Docker {
         self.require(
             vec![
                 "exec".into(),
+                "--user".into(),
+                "0:0".into(),
                 gpu.container.clone(),
                 "mkdir".into(),
                 "-p".into(),
@@ -334,6 +336,8 @@ impl Driver for Docker {
         self.require(
             vec![
                 "exec".into(),
+                "--user".into(),
+                "0:0".into(),
                 gpu.container.clone(),
                 "chmod".into(),
                 "700".into(),
@@ -352,7 +356,24 @@ impl Driver for Docker {
             "/root/.ssh/authorized_keys",
             contents.as_bytes(),
         )
-        .await
+        .await?;
+        // docker cp can retain the unprivileged controller's UID. sshd StrictModes
+        // rejects root's authorized_keys unless both managed paths belong to root.
+        self.require(
+            vec![
+                "exec".into(),
+                "--user".into(),
+                "0:0".into(),
+                gpu.container.clone(),
+                "chown".into(),
+                "0:0".into(),
+                "/root/.ssh".into(),
+                "/root/.ssh/authorized_keys".into(),
+            ],
+            "Container SSH ownership repair failed",
+        )
+        .await?;
+        Ok(())
     }
     async fn password(&self, gpu: &GpuConfig, password: &str) -> Result<()> {
         let mut salt = [0; 16];

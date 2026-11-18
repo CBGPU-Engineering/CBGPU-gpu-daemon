@@ -84,8 +84,9 @@ receipt; it does not enable, stop, start or restart services. Keep the service k
 the existing gateway host key, and configure `docker.ssh_host_keys_dir` under
 `/var/lib/cbgpu-gpu-controller/host-keys` when using these examples.
 
-The current GPU booking controller runs the reviewed Rust source at
-[`a0ba1d5`](https://github.com/CBGPU-Engineering/CBGPU-gpu-daemon/commit/a0ba1d5).
+The GPU booking controller completed its initial reviewed Rust handover at
+[`a0ba1d5`](https://github.com/CBGPU-Engineering/CBGPU-gpu-daemon/commit/a0ba1d5);
+subsequent reviewed Rust patches retain the GPU-only service boundary.
 The former Python GPU controller service is stopped and disabled; its installed
 tree is preserved for recovery. Existing SSH gateways and CPU deployment workers
 remain independent compatibility services and have not completed that handover.

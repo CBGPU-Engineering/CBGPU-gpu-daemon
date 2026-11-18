@@ -7,6 +7,12 @@
 The host-side GPU reservation controller, managed container lifecycle and SSH
 gateway for CBGPU. This is a privileged infrastructure component, not the web UI.
 
+For the optional school GPU connector and desktop setup downloads, see
+[GPU Node & Setup releases](https://github.com/CBGPU-Engineering/CBGPU-backend/releases/tag/gpu-node-v0.1.0-beta.1).
+Their [source is maintained in CBGPU-backend](https://github.com/CBGPU-Engineering/CBGPU-backend/tree/main/rust/crates/cbgpu-gpu-enrollment),
+separately from the privileged controller binaries below. The Windows helper
+currently provides environment checks; Windows GPU installation remains disabled.
+
 ## Native Rust candidate
 
 The host binaries require Rust 1.89 or newer.

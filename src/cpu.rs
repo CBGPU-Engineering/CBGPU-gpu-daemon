@@ -149,6 +149,23 @@ pub fn memory_bytes(s: &str) -> Result<u64> {
     }
     Ok(value)
 }
+/// Build pyproject packages from a disposable tracked Git snapshot. The persistent
+/// application checkout (including untracked data and prior build outputs) is untouched.
+/// Requirements installs retain their existing editable/local-path behavior.
+pub fn python_dependency_setup() -> &'static str {
+    r#"if [ -f requirements.txt ]; then
+    pip install -r requirements.txt -q;
+elif [ -f pyproject.toml ]; then
+    repository_root=$(git rev-parse --show-toplevel);
+    python_build=$(mktemp -d /tmp/cbgpu-python-build.XXXXXX);
+    trap 'rm -rf -- "$python_build"' EXIT;
+    git clone --quiet --no-hardlinks --no-checkout "$repository_root" "$python_build";
+    git -C "$python_build" checkout --quiet --detach "$(git rev-parse HEAD)";
+    (cd "$python_build${project_root#"$repository_root"}" && pip install . -q);
+    rm -rf -- "$python_build";
+    trap - EXIT;
+fi; "#
+}
 impl Project {
     pub fn validate(&self) -> Result<()> {
         container_name(&self.id)?;
@@ -273,14 +290,14 @@ impl Project {
             "apt-get update -qq; apt-get install -y -qq git; "
         };
         let deps = if runtime.starts_with("python") {
-            "if [ -f requirements.txt ]; then pip install -r requirements.txt -q; elif [ -f pyproject.toml ]; then pip install . -q; fi; "
+            python_dependency_setup()
         } else if runtime.starts_with("node") {
             "if [ -f package-lock.json ]; then npm ci; elif [ -f package.json ]; then npm install; fi; "
         } else {
             ""
         };
         let script = format!(
-            "set -e; {install}if [ ! -d /app/.git ]; then git clone -- {} /app; fi; git -C /app remote set-url origin {}; git -C /app fetch origin {}; git -C /app checkout -B {} FETCH_HEAD; cd {}; project_root=$(pwd -P); case \"$project_root\" in /app|/app/*) ;; *) echo 'Root Directory escapes repository'; exit 1 ;; esac; {deps}touch /tmp/cbgpu-ready; exec sh -c {}",
+            "set -e; rm -f /tmp/cbgpu-ready; {install}if [ ! -d /app/.git ]; then git clone -- {} /app; fi; git -C /app remote set-url origin {}; git -C /app fetch origin {}; git -C /app checkout -B {} FETCH_HEAD; cd {}; project_root=$(pwd -P); case \"$project_root\" in /app|/app/*) ;; *) echo 'Root Directory escapes repository'; exit 1 ;; esac; {deps}touch /tmp/cbgpu-ready; exec sh -c {}",
             quote(url),
             quote(url),
             quote(branch),

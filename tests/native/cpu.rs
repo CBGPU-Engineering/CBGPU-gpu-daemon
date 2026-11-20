@@ -303,3 +303,97 @@ fn healthy_public_tunnel_maintenance_cannot_starve_new_deployments_or_other_proj
         ]
     );
 }
+
+#[test]
+fn python_build_snapshot_isolates_stale_artifacts_and_cleans_up_on_failure() {
+    use std::{fs, process::Command};
+    let root = tempfile::tempdir().unwrap();
+    let repo = root.path().join("repository");
+    let package = repo.join("server");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("pyproject.toml"),
+        "[project]\nname='fixture'\nversion='1'\n",
+    )
+    .unwrap();
+    fs::write(package.join("source.py"), "# tracked source\n").unwrap();
+    for args in [
+        vec!["init", "-q"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+    ] {
+        assert!(
+            Command::new("git")
+                .args(args)
+                .current_dir(&repo)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    fs::create_dir(package.join("build")).unwrap();
+    fs::write(package.join("build/private-user-output"), "preserve me").unwrap();
+    let bin = root.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let pip = bin.join("pip");
+    fs::write(
+        &pip,
+        r#"#!/bin/sh
+set -eu
+test "$1" = install
+test "$2" = .
+test -f source.py
+test ! -e build/private-user-output
+git rev-parse HEAD >/dev/null
+pwd > "$BUILD_OBSERVATION"
+mkdir -p build
+printf generated > build/output
+exit "${BUILD_EXIT:-0}"
+"#,
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&pip, fs::Permissions::from_mode(0o700)).unwrap();
+    let observation = root.path().join("observation");
+    for code in [0, 17] {
+        let script = format!(
+            "set -e; project_root=$(pwd -P); {}",
+            cbgpu_gpu_daemon::cpu::python_dependency_setup()
+        );
+        let result = Command::new("sh")
+            .args(["-c", &script])
+            .current_dir(&package)
+            .env(
+                "PATH",
+                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+            )
+            .env("BUILD_OBSERVATION", &observation)
+            .env("BUILD_EXIT", code.to_string())
+            .output()
+            .unwrap();
+        assert_eq!(
+            result.status.code(),
+            Some(code),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let snapshot = fs::read_to_string(&observation).unwrap();
+        assert!(
+            !std::path::Path::new(snapshot.trim()).exists(),
+            "scratch snapshot leaked"
+        );
+        assert_eq!(
+            fs::read_to_string(package.join("build/private-user-output")).unwrap(),
+            "preserve me"
+        );
+        assert!(!package.join("build/output").exists());
+    }
+}

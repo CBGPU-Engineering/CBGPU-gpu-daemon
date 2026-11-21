@@ -199,7 +199,7 @@ async fn relay(
         tokio::select! {_=&mut transfer=>break,_=sleep_until(deadline(end))=>break,_=tokio::time::sleep(wait)=>{
          let authorization=auth.allowed(&key,Utc::now());tokio::pin!(authorization);
          let fresh=tokio::select!{_=&mut transfer=>break,_=sleep_until(deadline(end))=>break,result=&mut authorization=>result};
-         match fresh{Ok(allowed)=>match allowed.get(&gpu){Some(next)if *next>Utc::now()=>{end=*next},_=>break},Err(_)=>break}
+         match fresh{Ok(allowed)=>match allowed.get(&gpu){Some(next)if *next>Utc::now()=>{end = *next},_=>break},Err(_)=>break}
         }}
     }
     let _ = tokio::time::timeout(Duration::from_secs(2), handle.close(channel_id)).await;

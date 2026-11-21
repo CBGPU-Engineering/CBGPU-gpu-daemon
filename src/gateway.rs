@@ -191,13 +191,15 @@ async fn relay(
     let mut stream = channel.into_stream();
     let transfer = tokio::io::copy_bidirectional(&mut stream, &mut backend);
     tokio::pin!(transfer);
-    let mut tick = tokio::time::interval(recheck);
-    tick.tick().await;
     loop {
-        tokio::select! {_=&mut transfer=>break,_=sleep_until(deadline(end))=>break,_=tick.tick()=>{
+        // Recheck before the current authority expires; no traffic receives an
+        // expiry grace period if fresh authorization is slow or unavailable.
+        let remaining = (end - Utc::now()).to_std().unwrap_or_default();
+        let wait = recheck.min((remaining / 2).max(Duration::from_millis(1)));
+        tokio::select! {_=&mut transfer=>break,_=sleep_until(deadline(end))=>break,_=tokio::time::sleep(wait)=>{
          let authorization=auth.allowed(&key,Utc::now());tokio::pin!(authorization);
          let fresh=tokio::select!{_=&mut transfer=>break,_=sleep_until(deadline(end))=>break,result=&mut authorization=>result};
-         match fresh{Ok(allowed)=>match allowed.get(&gpu){Some(next)if *next>Utc::now()=>{end=end.min(*next)},_=>break},Err(_)=>break}
+         match fresh{Ok(allowed)=>match allowed.get(&gpu){Some(next)if *next>Utc::now()=>{end=*next},_=>break},Err(_)=>break}
         }}
     }
     let _ = tokio::time::timeout(Duration::from_secs(2), handle.close(channel_id)).await;

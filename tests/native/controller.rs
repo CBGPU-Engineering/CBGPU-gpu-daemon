@@ -669,3 +669,57 @@ async fn native_key_sync_root_strictmodes_fixture() {
         String::from_utf8_lossy(&accepted.stderr)
     );
 }
+
+#[tokio::test]
+async fn fresh_same_booking_extension_preserves_runtime_across_original_deadline() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = config(dir.path());
+    let at = Utc::now();
+    let old_end = at + Duration::seconds(30);
+    let new_end = old_end + Duration::minutes(30);
+    let driver = MockDriver {
+        configured: true,
+        ..Default::default()
+    };
+    let mut state = State::default();
+    let mut snapshot = Snapshot {
+        passwords: BTreeMap::new(),
+        keys: Some(BTreeMap::new()),
+        reservations: vec![booking("same-booking", at - Duration::minutes(1), old_end)],
+    };
+    state
+        .reconcile(&cfg, Some(snapshot.clone()), at, &driver)
+        .await;
+    snapshot.reservations[0].end_time = new_end;
+    state
+        .reconcile(
+            &cfg,
+            Some(snapshot.clone()),
+            old_end - Duration::milliseconds(1),
+            &driver,
+        )
+        .await;
+    state
+        .reconcile(&cfg, None, old_end + Duration::seconds(1), &driver)
+        .await;
+    assert_eq!(state.active[&1].deadline, new_end);
+    assert!(
+        !driver
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call.starts_with("reset"))
+    );
+    // An unavailable authority still cannot move the last verified deadline.
+    state.reconcile(&cfg, None, new_end, &driver).await;
+    assert!(state.active.is_empty());
+    assert!(
+        driver
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call == "reset1")
+    );
+}

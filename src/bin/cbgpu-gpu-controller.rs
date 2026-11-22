@@ -189,14 +189,16 @@ async fn run() -> Result<()> {
             serde_json::to_string(&report)
                 .map_err(|_| Failure("Status report serialization failed"))?
         );
+        // Learn extensions before the last verified deadline, without adding
+        // runtime grace if the bounded authoritative snapshot fails.
         let delay = state
             .active
             .values()
-            .map(|session| (session.deadline - Utc::now()).to_std().unwrap_or_default())
+            .map(|session| (session.deadline - Utc::now()).to_std().unwrap_or_default() / 2)
             .min()
             .unwrap_or(Duration::from_secs(config.poll_interval_seconds))
             .min(Duration::from_secs(config.poll_interval_seconds))
-            .max(Duration::from_millis(500));
+            .max(Duration::from_millis(1));
         tokio::select! {_=tokio::time::sleep(delay)=>{},_=tokio::signal::ctrl_c()=>{save(&state_path,&state)?;return Ok(())}}
     }
 }

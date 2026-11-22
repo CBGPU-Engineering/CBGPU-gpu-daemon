@@ -233,6 +233,15 @@ async fn actual_native_ssh_forwarding_half_close_and_revocation() {
     .unwrap()
     .unwrap();
     assert_eq!(tail, b"after-eof");
+    // A fresh, still-active reservation extension must keep this existing channel alive.
+    let old_end = Utc::now() + Duration::milliseconds(250);
+    auth.bookings.lock().unwrap()[0].end_time = old_end;
+    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    auth.bookings.lock().unwrap()[0].end_time = Utc::now() + Duration::seconds(2);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    stream.write_all(b"extended!!").await.unwrap();
+    stream.read_exact(&mut bytes).await.unwrap();
+    assert_eq!(&bytes, b"extended!!");
     auth.bookings.lock().unwrap().clear();
     let mut byte = [0];
     let closed = tokio::time::timeout(std::time::Duration::from_secs(2), stream.read(&mut byte))
